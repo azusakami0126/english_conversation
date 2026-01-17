@@ -12,11 +12,11 @@ from langchain.prompts import (
     ChatPromptTemplate,
     HumanMessagePromptTemplate,
     MessagesPlaceholder,
+    SystemMessagePromptTemplate,
 )
-from langchain.schema import SystemMessage
 from langchain.memory import ConversationSummaryBufferMemory
 from langchain_openai import ChatOpenAI
-from langchain.chains import ConversationChain
+from langchain.chains import LLMChain
 import constants as ct
 
 def record_audio(audio_input_file_path):
@@ -126,11 +126,11 @@ def create_chain(system_template):
     """
 
     prompt = ChatPromptTemplate.from_messages([
-        SystemMessage(content=system_template),
+        SystemMessagePromptTemplate.from_template(system_template),
         MessagesPlaceholder(variable_name="history"),
         HumanMessagePromptTemplate.from_template("{input}")
     ])
-    chain = ConversationChain(
+    chain = LLMChain(
         llm=st.session_state.llm,
         memory=st.session_state.memory,
         prompt=prompt
@@ -143,12 +143,17 @@ def create_problem_and_play_audio():
     問題生成と音声ファイルの再生
     Args:
         chain: 問題文生成用のChain
+        englv: 英語レベル（初級レベル、中級レベル、上級レベル）
         speed: 再生速度（1.0が通常速度、0.5で半分の速さ、2.0で倍速など）
         openai_obj: OpenAIのオブジェクト
     """
 
     # 問題文を生成するChainを実行し、問題文を取得
-    problem = st.session_state.chain_create_problem.predict(input="")
+    response = st.session_state.chain_create_problem.invoke({
+        "input": "Please generate a new English sentence for me to practice.", 
+        "english_level": st.session_state.englv
+    })
+    problem = response["text"]
 
     # LLMからの回答を音声データに変換
     llm_response_audio = st.session_state.openai_obj.audio.speech.create(
@@ -166,11 +171,21 @@ def create_problem_and_play_audio():
 
     return problem, llm_response_audio
 
-def create_evaluation():
+def create_evaluation(llm_text, user_text):
     """
     ユーザー入力値の評価生成
+    Args:
+        llm_text: AIの発言
+        user_text: ユーザーの回答
+        chain: 評価生成用のChain
+        englv: 英語レベル（初級レベル、中級レベル、上級レベル）
     """
 
-    llm_response_evaluation = st.session_state.chain_evaluation.predict(input="")
+    response = st.session_state.chain_evaluation.invoke({
+        "input": f"{user_text}\n私の回答を分析し、評価してください。",
+        "english_level": st.session_state.englv,
+        "llm_text": llm_text,
+        "user_text": user_text
+    })
 
-    return llm_response_evaluation
+    return response["text"]
